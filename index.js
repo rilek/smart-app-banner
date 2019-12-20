@@ -15,24 +15,15 @@ var root = doc && doc.documentElement;
 // platform dependent functionality
 var mixins = {
 	ios: {
-		appMeta: 'apple-itunes-app',
 		iconRels: ['apple-touch-icon-precomposed', 'apple-touch-icon'],
 		getStoreLink: function () {
 			return 'https://itunes.apple.com/' + this.options.appStoreLanguage + '/app/id' + this.appId + "?mt=8";
 		}
 	},
 	android: {
-		appMeta: 'google-play-app',
 		iconRels: ['android-touch-icon', 'apple-touch-icon-precomposed', 'apple-touch-icon'],
 		getStoreLink: function () {
 			return 'http://play.google.com/store/apps/details?id=' + this.appId;
-		}
-	},
-	windows: {
-		appMeta: 'msApplication-ID',
-		iconRels: ['windows-touch-icon', 'apple-touch-icon-precomposed', 'apple-touch-icon'],
-		getStoreLink: function () {
-			return 'http://www.windowsphone.com/s?appid=' + this.appId;
 		}
 	}
 };
@@ -44,6 +35,10 @@ var SmartBanner = function (options) {
 		daysReminder: 90,
 		appStoreLanguage: userLang, // Language code for App Store
 		button: 'OPEN', // Text for the install button
+		appId: {
+			ios: '',
+			android: ''
+		},
 		store: {
 			ios: 'On the App Store',
 			android: 'In Google Play',
@@ -62,9 +57,7 @@ var SmartBanner = function (options) {
 
 	if (this.options.force) {
 		this.type = this.options.force;
-	} else if (agent.os.name === 'Windows Phone' || agent.os.name === 'Windows Mobile') {
-		this.type = 'windows';
-	} else if (agent.os.name === 'iOS') {
+	} else if (agent.ua.contains('iPhone')) {
 		this.type = 'ios';
 	} else if (agent.os.name === 'Android') {
 		this.type = 'android';
@@ -80,26 +73,19 @@ var SmartBanner = function (options) {
 		return;
 	}
 
-	this.appMeta = mixins[this.type].appMeta;
-	this.parseAppId();
+	this.appId = this.options.appId[this.type];
 
-	var isMobileSafari = (this.type === 'ios' && agent.browser.name === 'Mobile Safari' && parseInt(agent.os.version, 10) >= 6);
+	var isMobileSafari = false; //(this.type === 'ios' && agent.browser.name === 'Mobile Safari' && parseInt(agent.os.version, 10) >= 6);
 
 	var runningStandAlone = navigator.standalone;
 	var userDismissed = cookie.get(this.appId + '-smartbanner-closed');
 	var userInstalled = cookie.get(this.appId + '-smartbanner-installed');
 
-	if (isMobileSafari || runningStandAlone || userDismissed || userInstalled) {
+	if (isMobileSafari || runningStandAlone || userDismissed || userInstalled || !this.appId) {
 		return;
 	}
 
 	extend(this, mixins[this.type]);
-
-	// - If we dont have app id in meta, dont display the banner
-	// - If opened in safari IOS, dont display the banner
-	if (!this.appId && agent.os.name === 'IOS' && agent.browser.name === 'Safari') {
-		return;
-	}
 
 	this.create();
 	this.show();
@@ -170,37 +156,27 @@ SmartBanner.prototype = {
 	},
 	close: function () {
 		this.hide();
-		cookie.set(this.appId + '-smartbanner-closed', 'true', {
-			path: '/',
-			expires: new Date(Number(new Date()) + (this.options.daysHidden * 1000 * 60 * 60 * 24))
-		});
+		if (this.options.daysHidden > 0) {
+			cookie.set(this.appId + '-smartbanner-closed', 'true', {
+				path: '/',
+				expires: new Date(Number(new Date()) + (this.options.daysHidden * 1000 * 60 * 60 * 24))
+			});
+		}
 		if (typeof this.options.close === 'function') {
 			return this.options.close();
 		}
 	},
 	install: function () {
 		this.hide();
-		cookie.set(this.appId + '-smartbanner-installed', 'true', {
-			path: '/',
-			expires: new Date(Number(new Date()) + (this.options.daysReminder * 1000 * 60 * 60 * 24))
-		});
+		if (this.options.daysHidden > 0) {
+			cookie.set(this.appId + '-smartbanner-installed', 'true', {
+				path: '/',
+				expires: new Date(Number(new Date()) + (this.options.daysReminder * 1000 * 60 * 60 * 24))
+			});
+		}
 		if (typeof this.options.close === 'function') {
 			return this.options.close();
 		}
-	},
-	parseAppId: function () {
-		var meta = q('meta[name="' + this.appMeta + '"]');
-		if (!meta) {
-			return;
-		}
-
-		if (this.type === 'windows') {
-			this.appId = meta.getAttribute('content');
-		} else {
-			this.appId = /app-id=([^\s,]+)/.exec(meta.getAttribute('content'))[1];
-		}
-
-		return this.appId;
 	}
 };
 
